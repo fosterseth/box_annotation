@@ -17,16 +17,22 @@ class App( tk.Tk ):
         self.form = tk.Entry(self)
         self.form.pack()
         self.form.insert(0, "img_?.jpg")
+        self.mode = [("rect", "1"), ("dot", "2")]
+        self.modevalue = tk.StringVar()
+        self.modevalue.set("1")
+        for text, mode in self.mode:
+            rb = tk.Radiobutton(self, text = text, variable = self.modevalue, value = mode)
+            rb.pack()
 		
     def askdir(self):
         self.file_path = tk.filedialog.askdirectory()
-        #self.file_path = "c:/users/sbf/desktop/images"
         os.chdir(self.file_path)
         self.initialize()
 			
     def initialize(self):
         self.win = tk.Toplevel()
-        
+        self.setmode = self.modevalue.get()
+        print(self.setmode)
         self.ii = 0
         
         self.imagenames = glob.glob(self.globentry.get())
@@ -45,7 +51,7 @@ class App( tk.Tk ):
         self.listbox = tk.Listbox(self.frame2, width = 35, yscrollcommand=self.scb.set, selectmode=tk.SINGLE, activestyle="none")#, selectbackground="#FFFF66", selectforeground="black")
         self.save_button = tk.Button(self.frame1, text = "Save", command = self.save_data)
         self.load_button = tk.Button(self.frame1, text = "Load", command = self.load_data)
-        self.save_location = None
+        self.save_location = False
         self.label = tk.Label(self.frame1, text = "Right Arrow: Next, Left Arrow: Prev, Right-Click: No Object")
         self.scb.config(command=self.listbox.yview)
         for i in self.imagenames:
@@ -54,13 +60,19 @@ class App( tk.Tk ):
         
         self.win.bind("<Right>", self.next_image)
         self.win.bind("<Left>", self.prev_image)
-        self.canvas.bind("<B1-Motion>", self.clicked)
-        self.canvas.bind("<ButtonRelease-1>", self.new_rect)
-        self.canvas.bind("<Button-3>", self.clear_rect)
+        if self.setmode == "1":
+            self.canvas.bind("<B1-Motion>", self.clicked)
+            self.canvas.bind("<ButtonRelease-1>", self.new_rect)
+            self.canvas.bind("<Button-3>", self.clear_rect)
+        elif self.setmode == "2":
+            self.canvas.bind("<Button-1>", self.b1_clicked)
+            self.canvas.bind("<Button-3>", self.clear_dot)
+            
         self.listbox.bind("<<ListboxSelect>>", self.listbox_select)
         
         self.state = "idle"
         self.flag_has_rect = False
+        self.flag_has_dot = False
         
         pad = 3
         
@@ -76,10 +88,13 @@ class App( tk.Tk ):
     def reorder_names(self):
         form = self.form.get()
         ff = form.split("?")
-        #print(ff)
+        print(ff)
         results = []
         for i,val in enumerate(self.imagenames):
-            _,_,rest = val.partition(ff[0])
+            if len(ff[0]) > 0:
+                _,_,rest = val.partition(ff[0])
+            else:
+                rest = val
             result,_,_ = rest.partition(ff[1])
             results.append(int(result))
         sresult = sorted(range(len(results)), key=lambda k: results[k])
@@ -87,14 +102,14 @@ class App( tk.Tk ):
         self.imagenames = names
     
     def listbox_select(self, event):
-        self.save_rect()
+        self.save_object()
         w = self.listbox.curselection()
         #print(w)
         self.listbox.select_clear(int(w[0]))
         self.ii = int(w[0])
         self.listbox.itemconfig(self.ii, bg="#FFFF66")
         self.clear_draw()
-        self.draw_stored_rect()
+        self.draw_stored_object()
         self.flag_yview = False
         self.display_image()
     
@@ -116,13 +131,16 @@ class App( tk.Tk ):
         #print("next")
         if self.ii+1 < len(self.imagenames):
             self.listbox.itemconfig(self.ii, bg="white")
-            self.save_rect()
+            self.save_object()
             self.ii += 1
             self.listbox.itemconfig(self.ii, bg="#FFFF66")
-            if self.data[self.ii] != None:
+            if self.setmode == "1":
+                if self.data[self.ii] != None:
+                    self.clear_draw()
+            elif self.setmode == "2":
                 self.clear_draw()
             #print(self.data[self.ii])
-            self.draw_stored_rect()
+            self.draw_stored_object()
             self.flag_yview = True
             self.display_image()
 
@@ -131,28 +149,39 @@ class App( tk.Tk ):
         #print("prev")
         if self.ii-1 > -1:
             self.listbox.itemconfig(self.ii, bg="white")
-            self.save_rect()
+            self.save_object()
             self.ii -= 1
             self.listbox.itemconfig(self.ii, bg="#FFFF66")
-            if self.data[self.ii] != None:
+            if self.setmode == "1":
+                if self.data[self.ii] != None:
+                    self.clear_draw()
+            elif self.setmode == "2":
                 self.clear_draw()
             #print(self.data[self.ii])
-            self.draw_stored_rect()
+            self.draw_stored_object()
             self.flag_yview = True
             self.display_image()
-            
-    def save_rect(self):
+    
+    def save_object(self):
         if self.flag_has_rect:
             self.data[self.ii] = self.canvas.coords(self.rect)
-            #print(self.data[self.ii])
+            self.listbox.itemconfig(self.ii, bg = "#199643")
+        elif self.flag_has_dot:
+            self.data[self.ii] = self.point
             self.listbox.itemconfig(self.ii, bg = "#199643")
         elif self.data[self.ii] != None:
             self.listbox.itemconfig(self.ii, bg = "#3366CC")
         else:
             self.listbox.itemconfig(self.ii, bg = "white")
-        
+    
+    def b1_clicked(self,event):
+        self.clear_dot(None)
+        self.point = [event.x, event.y]
+        self.dot = self.canvas.create_oval(event.x-8, event.y-8, event.x+8, event.y+8, fill = "black")
+        self.flag_has_dot = True
+               
     def clicked(self, event):
-        #print("xy ", event.x, event.y)
+        print("xy ", event.x, event.y)
         if self.flag_has_rect:
             points = self.canvas.coords(self.rect)
         if self.state == "idle":
@@ -250,11 +279,38 @@ class App( tk.Tk ):
         self.state = "idle"
         self.data[self.ii] = ["NaN","NaN","NaN","NaN"]
     
+    def clear_dot(self, event):
+        if self.flag_has_dot:
+            self.canvas.delete(self.dot)
+            self.flag_has_dot = False
+        self.data[self.ii] = ["NaN","NaN"]
+        
     def clear_draw(self):
         if self.flag_has_rect:
             self.canvas.delete(self.rect)
             self.flag_has_rect = False
-        
+        elif self.flag_has_dot:
+            self.canvas.delete(self.dot)
+            self.flag_has_dot = False
+    
+    def draw_stored_object(self):
+        if self.setmode == "1":
+            self.draw_stored_rect()
+        elif self.setmode == "2":
+            self.draw_stored_dot()
+            
+    def draw_stored_dot(self):
+        if self.data[self.ii] != None and self.data[self.ii][0] != "NaN":
+            x = self.data[self.ii][0]
+            y = self.data[self.ii][1]
+            print(x,y)
+            if self.flag_has_dot:
+                self.canvas.coords(self.dot, x, y)
+            else:
+                self.dot = self.canvas.create_oval(x-8, y-8, x+8, y+8, fill = "black")
+                self.point = [x,y]
+                self.flag_has_dot = True
+                
     def draw_stored_rect(self):
         if self.data[self.ii] != None and self.data[self.ii][0] != "NaN":
             minx = self.data[self.ii][0]
@@ -268,38 +324,49 @@ class App( tk.Tk ):
                 self.flag_has_rect = True
     
     def save_data(self):
-        self.save_rect()
-        if self.save_location == None:
+        self.save_object()
+        if not self.save_location:
             self.save_location = tk.filedialog.asksaveasfilename()
-        fid = open(self.save_location, "w")
-        for i, val in enumerate(self.data):
-            if not val == None:
-                if not val[0] == "NaN":
-                    towrite = self.imagenames[i] + "," + ','.join(str(int(n)) for n in val) + "\n"
+        if not self.save_location == "":
+            fid = open(self.save_location, "w")
+            for i, val in enumerate(self.data):
+                if not val == None:
+                    if not val[0] == "NaN":
+                        towrite = self.imagenames[i] + "," + ','.join(str(int(n)) for n in val) + "\n"
+                    else:
+                        towrite = self.imagenames[i] + "," + ','.join(val) + "\n"
                 else:
-                    towrite = self.imagenames[i] + "," + ','.join(val) + "\n"
-            else:
-                towrite = self.imagenames[i] + "," + "unchecked" + "\n"
-            fid.write(towrite)
-        fid.close()
-        print("data saved")
+                    towrite = self.imagenames[i] + "," + "unchecked" + "\n"
+                fid.write(towrite)
+            fid.close()
+            print("data saved")
+        else:
+            print("save location not set")
         
     def load_data(self):
         print("loading data")
-        fid = open(tk.filedialog.askopenfilename(), "r")
-        reader = csv.reader(fid)
-        for val in reader:
-            idx = self.imagenames.index(val[0])
-            if val[1] != "unchecked":
-                if val[1] != "NaN":
-                    self.data[idx] = [int(x) for x in val[1:6]]
-                    self.listbox.itemconfig(idx, bg = "#199643")
-                else:
-                    self.data[idx] = ["NaN", "NaN", "NaN", "NaN"]
-                    self.listbox.itemconfig(idx, bg = "#3366CC")
-            self.draw_stored_rect()
-        print("data loaded")
-        fid.close()
+        load_location = tk.filedialog.askopenfilename()
+        print(load_location)
+        if not load_location == "":
+            fid = open(load_location, "r")
+            reader = csv.reader(fid)
+            for val in reader:
+                idx = self.imagenames.index(val[0])
+                if val[1] != "unchecked":
+                    if val[1] != "NaN":
+                        self.data[idx] = [int(x) for x in val[1:6]]
+                        self.listbox.itemconfig(idx, bg = "#199643")
+                    else:
+                        if self.setmode == "1":
+                            self.data[idx] = ["NaN", "NaN", "NaN", "NaN"]
+                        elif self.setmode == "2":
+                            self.data[idx] = ["NaN", "NaN"]
+                        self.listbox.itemconfig(idx, bg = "#3366CC")
+            self.draw_stored_object()
+            print("data loaded")
+            fid.close()
+        else:
+            print("load location not set")
         
 
 app = App()
